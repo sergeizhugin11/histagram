@@ -75,9 +75,11 @@ async function handleLogin(e) {
             showDashboard();
         } else {
             const error = await response.json();
+            console.error('Login error:', response.json());
             alert(error.error || 'Login failed');
         }
     } catch (error) {
+        console.error('Login error:', error);
         alert('Login failed: ' + error.message);
     }
 }
