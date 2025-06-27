@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('categoryForm').addEventListener('submit', handleAddCategory);
 });
 
+// ✅ Исправленная функция makeRequest
 async function makeRequest(url, options = {}) {
     const config = {
         headers: {
@@ -54,6 +55,7 @@ async function checkAuth() {
     }
 }
 
+// ✅ Исправленная функция handleLogin
 async function handleLogin(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
@@ -67,16 +69,17 @@ async function handleLogin(e) {
             })
         });
 
+        // Читаем JSON только один раз
+        const data = await response.json();
+        
         if (response.ok) {
-            const data = await response.json();
             authToken = data.token;
             localStorage.setItem('authToken', authToken);
             currentUser = data.user;
             showDashboard();
         } else {
-            const error = await response.json();
-            console.error('Login error:', response.json());
-            alert(error.error || 'Login failed');
+            // data уже содержит parsed JSON
+            alert(data.error || 'Login failed');
         }
     } catch (error) {
         console.error('Login error:', error);
@@ -107,6 +110,11 @@ function showDashboard() {
 async function loadVideos() {
     try {
         const response = await makeRequest('/videos');
+        
+        if (!response.ok) {
+            throw new Error('Failed to load videos');
+        }
+        
         const data = await response.json();
         
         const table = `
@@ -159,6 +167,11 @@ async function loadVideos() {
 async function loadAccounts() {
     try {
         const response = await makeRequest('/accounts');
+        
+        if (!response.ok) {
+            throw new Error('Failed to load accounts');
+        }
+        
         const accounts = await response.json();
         
         const table = `
@@ -206,6 +219,11 @@ async function loadAccounts() {
 async function loadCategories() {
     try {
         const response = await makeRequest('/categories');
+        
+        if (!response.ok) {
+            throw new Error('Failed to load categories');
+        }
+        
         const categories = await response.json();
         
         // Update category selects
@@ -265,6 +283,7 @@ async function loadCategories() {
     }
 }
 
+// ✅ Исправленная функция handleUpload
 async function handleUpload(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
@@ -276,20 +295,22 @@ async function handleUpload(e) {
             body: formData
         });
 
+        const data = await response.json();
+
         if (response.ok) {
             bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
             e.target.reset();
             loadVideos();
             alert('Video uploaded successfully!');
         } else {
-            const error = await response.json();
-            alert(error.error || 'Upload failed');
+            alert(data.error || 'Upload failed');
         }
     } catch (error) {
         alert('Upload failed: ' + error.message);
     }
 }
 
+// ✅ Исправленная функция handleAddAccount
 async function handleAddAccount(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
@@ -304,20 +325,22 @@ async function handleAddAccount(e) {
             })
         });
 
+        const data = await response.json();
+
         if (response.ok) {
             bootstrap.Modal.getInstance(document.getElementById('accountModal')).hide();
             e.target.reset();
             loadAccounts();
             alert('Account added successfully!');
         } else {
-            const error = await response.json();
-            alert(error.error || 'Failed to add account');
+            alert(data.error || 'Failed to add account');
         }
     } catch (error) {
         alert('Failed to add account: ' + error.message);
     }
 }
 
+// ✅ Исправленная функция handleAddCategory
 async function handleAddCategory(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
@@ -332,14 +355,15 @@ async function handleAddCategory(e) {
             })
         });
 
+        const data = await response.json();
+
         if (response.ok) {
             bootstrap.Modal.getInstance(document.getElementById('categoryModal')).hide();
             e.target.reset();
             loadCategories();
             alert('Category added successfully!');
         } else {
-            const error = await response.json();
-            alert(error.error || 'Failed to add category');
+            alert(data.error || 'Failed to add category');
         }
     } catch (error) {
         alert('Failed to add category: ' + error.message);
