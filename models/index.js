@@ -22,6 +22,7 @@ const TikTokAccount = require('./tiktokAccount')(sequelize, Sequelize.DataTypes)
 const Category = require('./category')(sequelize, Sequelize.DataTypes);
 const Video = require('./video')(sequelize, Sequelize.DataTypes);
 const PublishLog = require('./publishLog')(sequelize, Sequelize.DataTypes);
+const PublishSchedule = require('./publishSchedule')(sequelize, Sequelize.DataTypes);
 
 // Associations
 User.hasMany(TikTokAccount, { foreignKey: 'userId' });
@@ -33,8 +34,14 @@ Category.belongsTo(User, { foreignKey: 'userId' });
 User.hasMany(Video, { foreignKey: 'userId' });
 Video.belongsTo(User, { foreignKey: 'userId' });
 
+User.hasMany(PublishSchedule, { foreignKey: 'userId' });
+PublishSchedule.belongsTo(User, { foreignKey: 'userId' });
+
 Category.hasMany(Video, { foreignKey: 'categoryId' });
 Video.belongsTo(Category, { foreignKey: 'categoryId' });
+
+Category.hasMany(PublishSchedule, { foreignKey: 'categoryId' });
+PublishSchedule.belongsTo(Category, { foreignKey: 'categoryId' });
 
 TikTokAccount.hasMany(PublishLog, { foreignKey: 'accountId' });
 PublishLog.belongsTo(TikTokAccount, { foreignKey: 'accountId' });
@@ -48,5 +55,6 @@ module.exports = {
   TikTokAccount,
   Category,
   Video,
-  PublishLog
+  PublishLog,
+  PublishSchedule
 };
