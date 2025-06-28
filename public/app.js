@@ -17,6 +17,41 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('categoryForm').addEventListener('submit', handleAddCategory);
 });
 
+// ✅ Event delegation для всех кнопок
+document.addEventListener('click', async function(e) {
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    const id = e.target.closest('[data-action]')?.dataset.id;
+    
+    if (!action || !id) return;
+    
+    switch (action) {
+        case 'edit-video':
+            editVideo(parseInt(id));
+            break;
+            
+        case 'delete-video':
+            await deleteVideo(parseInt(id));
+            break;
+            
+        case 'toggle-account':
+            const isActive = e.target.closest('[data-action]').dataset.active === 'true';
+            await toggleAccount(parseInt(id), isActive);
+            break;
+            
+        case 'delete-account':
+            await deleteAccount(parseInt(id));
+            break;
+            
+        case 'edit-category':
+            editCategory(parseInt(id));
+            break;
+            
+        case 'delete-category':
+            await deleteCategory(parseInt(id));
+            break;
+    }
+});
+
 // ✅ Исправленная функция makeRequest
 async function makeRequest(url, options = {}) {
     const config = {
@@ -60,6 +95,8 @@ async function handleLogin(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
     
+    console.log('Login attempt for:', formData.get('email')); // Для отладки
+    
     try {
         const response = await makeRequest('/auth/login', {
             method: 'POST',
@@ -69,7 +106,6 @@ async function handleLogin(e) {
             })
         });
 
-        // Читаем JSON только один раз
         const data = await response.json();
         
         if (response.ok) {
@@ -78,7 +114,7 @@ async function handleLogin(e) {
             currentUser = data.user;
             showDashboard();
         } else {
-            // data уже содержит parsed JSON
+            console.error('Login failed:', data);
             alert(data.error || 'Login failed');
         }
     } catch (error) {
@@ -107,6 +143,7 @@ function showDashboard() {
     loadCategories();
 }
 
+// ✅ Исправленная функция loadVideos без onclick
 async function loadVideos() {
     try {
         const response = await makeRequest('/videos');
@@ -145,10 +182,10 @@ async function loadVideos() {
                             <td>${video.duration ? Math.round(video.duration) + 's' : '-'}</td>
                             <td>${new Date(video.createdAt).toLocaleDateString()}</td>
                             <td>
-                                <button class="btn btn-sm btn-outline-primary" onclick="editVideo(${video.id})">
+                                <button class="btn btn-sm btn-outline-primary" data-action="edit-video" data-id="${video.id}">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="btn btn-sm btn-outline-danger" onclick="deleteVideo(${video.id})">
+                                <button class="btn btn-sm btn-outline-danger" data-action="delete-video" data-id="${video.id}">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </td>
@@ -164,6 +201,7 @@ async function loadVideos() {
     }
 }
 
+// ✅ Исправленная функция loadAccounts без onclick
 async function loadAccounts() {
     try {
         const response = await makeRequest('/accounts');
@@ -197,10 +235,10 @@ async function loadAccounts() {
                             </td>
                             <td>${account.lastPublishAt ? new Date(account.lastPublishAt).toLocaleDateString() : 'Never'}</td>
                             <td>
-                                <button class="btn btn-sm btn-outline-primary" onclick="toggleAccount(${account.id}, ${!account.isActive})">
+                                <button class="btn btn-sm btn-outline-primary" data-action="toggle-account" data-id="${account.id}" data-active="${!account.isActive}">
                                     <i class="fas fa-${account.isActive ? 'pause' : 'play'}"></i>
                                 </button>
-                                <button class="btn btn-sm btn-outline-danger" onclick="deleteAccount(${account.id})">
+                                <button class="btn btn-sm btn-outline-danger" data-action="delete-account" data-id="${account.id}">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </td>
@@ -216,6 +254,7 @@ async function loadAccounts() {
     }
 }
 
+// ✅ Исправленная функция loadCategories без onclick
 async function loadCategories() {
     try {
         const response = await makeRequest('/categories');
@@ -264,10 +303,10 @@ async function loadCategories() {
                                 </span>
                             </td>
                             <td>
-                                <button class="btn btn-sm btn-outline-primary" onclick="editCategory(${category.id})">
+                                <button class="btn btn-sm btn-outline-primary" data-action="edit-category" data-id="${category.id}">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="btn btn-sm btn-outline-danger" onclick="deleteCategory(${category.id})">
+                                <button class="btn btn-sm btn-outline-danger" data-action="delete-category" data-id="${category.id}">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </td>
@@ -283,10 +322,16 @@ async function loadCategories() {
     }
 }
 
-// ✅ Исправленная функция handleUpload
+// ✅ Исправленная функция handleUpload с логированием
 async function handleUpload(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
+    
+    // Логирование для отладки
+    console.log('Upload form data:');
+    for (let [key, value] of formData.entries()) {
+        console.log(key, ':', value);
+    }
     
     try {
         const response = await makeRequest('/videos/upload', {
@@ -303,26 +348,33 @@ async function handleUpload(e) {
             loadVideos();
             alert('Video uploaded successfully!');
         } else {
+            console.error('Upload failed:', data);
             alert(data.error || 'Upload failed');
         }
     } catch (error) {
+        console.error('Upload error:', error);
         alert('Upload failed: ' + error.message);
     }
 }
 
-// ✅ Исправленная функция handleAddAccount
+// ✅ Исправленная функция handleAddAccount с логированием
 async function handleAddAccount(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
     
+    const requestData = {
+        accountName: formData.get('accountName'),
+        accessToken: formData.get('accessToken'),
+        refreshToken: formData.get('refreshToken')
+    };
+    
+    // Логирование для отладки
+    console.log('Account form data:', requestData);
+    
     try {
         const response = await makeRequest('/accounts', {
             method: 'POST',
-            body: JSON.stringify({
-                accountName: formData.get('accountName'),
-                accessToken: formData.get('accessToken'),
-                refreshToken: formData.get('refreshToken')
-            })
+            body: JSON.stringify(requestData)
         });
 
         const data = await response.json();
@@ -333,26 +385,33 @@ async function handleAddAccount(e) {
             loadAccounts();
             alert('Account added successfully!');
         } else {
+            console.error('Account creation failed:', data);
             alert(data.error || 'Failed to add account');
         }
     } catch (error) {
+        console.error('Account creation error:', error);
         alert('Failed to add account: ' + error.message);
     }
 }
 
-// ✅ Исправленная функция handleAddCategory
+// ✅ Исправленная функция handleAddCategory с логированием
 async function handleAddCategory(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
     
+    const requestData = {
+        name: formData.get('name'),
+        description: formData.get('description'),
+        color: formData.get('color')
+    };
+    
+    // Логирование для отладки
+    console.log('Category form data:', requestData);
+    
     try {
         const response = await makeRequest('/categories', {
             method: 'POST',
-            body: JSON.stringify({
-                name: formData.get('name'),
-                description: formData.get('description'),
-                color: formData.get('color')
-            })
+            body: JSON.stringify(requestData)
         });
 
         const data = await response.json();
@@ -363,9 +422,11 @@ async function handleAddCategory(e) {
             loadCategories();
             alert('Category added successfully!');
         } else {
+            console.error('Category creation failed:', data);
             alert(data.error || 'Failed to add category');
         }
     } catch (error) {
+        console.error('Category creation error:', error);
         alert('Failed to add category: ' + error.message);
     }
 }
@@ -392,13 +453,28 @@ function getStatusColor(status) {
     }
 }
 
+// ✅ Заглушки для функций редактирования
+function editVideo(id) {
+    console.log('Edit video:', id);
+    alert('Edit video functionality not implemented yet');
+}
+
+function editCategory(id) {
+    console.log('Edit category:', id);
+    alert('Edit category functionality not implemented yet');
+}
+
 async function deleteVideo(id) {
     if (confirm('Are you sure you want to delete this video?')) {
         try {
             const response = await makeRequest(`/videos/${id}`, { method: 'DELETE' });
+            const data = await response.json();
+            
             if (response.ok) {
                 loadVideos();
                 alert('Video deleted successfully!');
+            } else {
+                alert(data.error || 'Failed to delete video');
             }
         } catch (error) {
             alert('Failed to delete video: ' + error.message);
@@ -410,9 +486,13 @@ async function deleteAccount(id) {
     if (confirm('Are you sure you want to delete this account?')) {
         try {
             const response = await makeRequest(`/accounts/${id}`, { method: 'DELETE' });
+            const data = await response.json();
+            
             if (response.ok) {
                 loadAccounts();
                 alert('Account deleted successfully!');
+            } else {
+                alert(data.error || 'Failed to delete account');
             }
         } catch (error) {
             alert('Failed to delete account: ' + error.message);
@@ -424,9 +504,13 @@ async function deleteCategory(id) {
     if (confirm('Are you sure you want to delete this category?')) {
         try {
             const response = await makeRequest(`/categories/${id}`, { method: 'DELETE' });
+            const data = await response.json();
+            
             if (response.ok) {
                 loadCategories();
                 alert('Category deleted successfully!');
+            } else {
+                alert(data.error || 'Failed to delete category');
             }
         } catch (error) {
             alert('Failed to delete category: ' + error.message);
@@ -440,8 +524,13 @@ async function toggleAccount(id, isActive) {
             method: 'PUT',
             body: JSON.stringify({ isActive })
         });
+        
+        const data = await response.json();
+        
         if (response.ok) {
             loadAccounts();
+        } else {
+            alert(data.error || 'Failed to update account');
         }
     } catch (error) {
         alert('Failed to update account: ' + error.message);
