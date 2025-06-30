@@ -1,4 +1,3 @@
-// routes/accounts.js
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { TikTokAccount } = require('../models');
@@ -24,26 +23,46 @@ router.get('/', authMiddleware, async (req, res) => {
 // Get TikTok OAuth URL
 router.get('/oauth/url', authMiddleware, async (req, res) => {
   try {
-    const { authUrl, state } = tiktokService.generateAuthUrl();
-
-    // Сохраняем state в сессии или временно в БД для проверки
+    const { authUrl, state, clientKey, redirectUri, scopes } = tiktokService.generateAuthUrl();
+    
+    // Сохраняем state в сессии для проверки
     req.session = req.session || {};
     req.session.tiktokOAuthState = state;
-
+    
+    console.log('OAuth URL generated:', {
+      authUrl,
+      state,
+      clientKey,
+      redirectUri,
+      scopes
+    });
+    
     res.json({
       authUrl,
       state,
+      clientKey,
+      redirectUri,
+      scopes,
       instructions: [
         "1. Click the authorization URL to open TikTok",
         "2. Log in to your TikTok account",
         "3. Authorize the application",
-        "4. Copy the 'code' parameter from the redirect URL",
-        "5. Return here and paste the code to complete setup"
-      ]
+        "4. You'll be redirected to YouTube",
+        "5. Copy ONLY the 'code' parameter value from the URL",
+        "6. Return here and paste the code to complete setup"
+      ],
+      debugInfo: {
+        generatedAt: new Date().toISOString(),
+        endpoint: 'https://www.tiktok.com/v2/auth/authorize/',
+        method: 'GET'
+      }
     });
   } catch (error) {
     console.error('OAuth URL generation error:', error);
-    res.status(500).json({ error: 'Failed to generate OAuth URL' });
+    res.status(500).json({ 
+      error: 'Failed to generate OAuth URL',
+      details: error.message
+    });
   }
 });
 

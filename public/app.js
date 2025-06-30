@@ -1020,26 +1020,35 @@ async function showAccountModal() {
                                             <li>Click the authorization link below</li>
                                             <li>Log in to your TikTok account</li>
                                             <li>Authorize the application</li>
-                                            <li>Copy the 'code' parameter from the redirect URL</li>
+                                            <li>You'll be redirected to YouTube</li>
+                                            <li>Copy the 'code' parameter from the URL (after 'code=')</li>
                                             <li>Paste the code below and click Connect</li>
                                         </ol>
+                                        <small class="text-muted">
+                                            <strong>Example:</strong> If redirected to<br>
+                                            <code>https://youtube.com?code=ABC123&state=xyz</code><br>
+                                            Copy only: <code>ABC123</code>
+                                        </small>
                                     </div>
                                     
                                     <div class="mb-3">
                                         <a id="oauthUrl" href="#" target="_blank" class="btn btn-secondary-gradient w-100">
                                             <i class="fas fa-external-link-alt me-2"></i>
-                                            Open TikTok Authorization
+                                            🚀 Open TikTok Authorization
                                         </a>
                                     </div>
                                     
                                     <div class="mb-3">
                                         <label class="form-label">Authorization Code</label>
                                         <input type="text" class="form-control" name="code" required 
-                                               placeholder="Paste the code from redirect URL">
+                                               placeholder="Paste the code from redirect URL (only the code part)">
                                         <small class="form-text text-muted">
-                                            Look for 'code=' in the URL after authorization
+                                            ⚠️ Copy only the code value, not the entire URL
                                         </small>
                                     </div>
+                                    
+                                    <!-- Debug Information -->
+                                    <div id="debugInfo"></div>
                                     
                                     <div class="d-flex gap-2">
                                         <button type="button" class="btn btn-secondary" onclick="resetOAuthFlow()">
@@ -1113,32 +1122,52 @@ async function showAccountModal() {
     new bootstrap.Modal(document.getElementById('accountModal')).show();
 }
 
-// Запуск OAuth потока
+// Запуск OAuth потока (исправленная версия)
 async function startOAuthFlow() {
     try {
-        showLoadingState('oauthStep1');
+        const step1Element = document.getElementById('oauthStep1');
+        step1Element.innerHTML = '<div class="text-center"><span class="loading-spinner me-2"></span>Generating authorization URL...</div>';
         
         const response = await makeRequest('/accounts/oauth/url');
         const data = await response.json();
         
         if (response.ok) {
+            console.log('OAuth data received:', data);
+            
             // Показываем второй шаг
             document.getElementById('oauthStep1').style.display = 'none';
             document.getElementById('oauthStep2').style.display = 'block';
             
             // Устанавливаем ссылку авторизации
-            document.getElementById('oauthUrl').href = data.authUrl;
+            const authLink = document.getElementById('oauthUrl');
+            authLink.href = data.authUrl;
+            
+            // Добавляем отладочную информацию
+            const debugInfo = document.getElementById('debugInfo');
+            if (debugInfo) {
+                debugInfo.innerHTML = `
+                    <div class="alert alert-secondary mt-3">
+                        <h6>Debug Information:</h6>
+                        <p><strong>Generated URL:</strong><br><code>${data.authUrl}</code></p>
+                        <p><strong>Client Key:</strong> ${data.clientKey || 'N/A'}</p>
+                        <p><strong>Redirect URI:</strong> ${data.redirectUri || 'N/A'}</p>
+                        <p><strong>Scopes:</strong> ${data.scopes || 'N/A'}</p>
+                        <p><strong>State:</strong> ${data.state}</p>
+                    </div>
+                `;
+            }
             
             // Сохраняем state для проверки
             sessionStorage.setItem('tiktokOAuthState', data.state);
             
-            showNotification('Authorization URL generated! Follow the steps above.', 'info');
+            showNotification('✅ Authorization URL generated! Click the link to continue.', 'success');
         } else {
-            showNotification(data.error || 'Failed to generate authorization URL', 'error');
+            showNotification('❌ ' + (data.error || 'Failed to generate authorization URL'), 'error');
             resetOAuthFlow();
         }
     } catch (error) {
-        showNotification('Error: ' + error.message, 'error');
+        console.error('OAuth flow error:', error);
+        showNotification('❌ Error: ' + error.message, 'error');
         resetOAuthFlow();
     }
 }

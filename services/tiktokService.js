@@ -1,5 +1,3 @@
-
-// services/tiktokService.js
 const axios = require('axios');
 
 class TikTokService {
@@ -7,30 +5,40 @@ class TikTokService {
     this.baseURL = 'https://open-api.tiktok.com';
     this.clientKey = process.env.TIKTOK_CLIENT_KEY || 'sbawqqvtabe0moshpm';
     this.clientSecret = process.env.TIKTOK_CLIENT_SECRET || 'LVnJbfibR3kgfbLhyOSBQURAy09AIbxq';
-    this.redirectUri = process.env.TIKTOK_REDIRECT_URI || 'https://youtube.com';
+    this.redirectUri = process.env.TIKTOK_REDIRECT_URI || 'https://login.salesforce.com';
     this.scopes = [
-      'user.b.basic',
-      'video.publish',
+      'user.info.basic',
+      'video.publish', 
       'video.upload',
       'user.info.profile',
       'user.info.stats'
     ];
   }
 
-  // Генерируем URL для авторизации
+  // Генерируем URL для авторизации (исправленная версия)
   generateAuthUrl() {
     const state = this.generateRandomString(32);
-    const params = new URLSearchParams({
-      client_key: this.clientKey,
-      scope: this.scopes.join(','),
-      response_type: 'code',
-      redirect_uri: this.redirectUri,
-      state: state
-    });
+    
+    // Используем правильный endpoint TikTok
+    const authUrl = `https://www.tiktok.com/v2/auth/authorize/` +
+      `?client_key=${encodeURIComponent(this.clientKey)}` +
+      `&scope=${encodeURIComponent(this.scopes.join(','))}` +
+      `&response_type=code` +
+      `&redirect_uri=${encodeURIComponent(this.redirectUri)}` +
+      `&state=${encodeURIComponent(state)}`;
+
+    console.log('Generated OAuth URL:', authUrl);
+    console.log('Client Key:', this.clientKey);
+    console.log('Scopes:', this.scopes.join(','));
+    console.log('Redirect URI:', this.redirectUri);
+    console.log('State:', state);
 
     return {
-      authUrl: `${this.baseURL}/platform/oauth/connect/?${params.toString()}`,
-      state: state
+      authUrl,
+      state,
+      clientKey: this.clientKey,
+      redirectUri: this.redirectUri,
+      scopes: this.scopes.join(',')
     };
   }
 
