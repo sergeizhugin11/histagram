@@ -9,8 +9,8 @@ class TikTokService {
     this.clientSecret = process.env.TIKTOK_CLIENT_SECRET || 'LVnJbfibR3kgfbLhyOSBQURAy09AIbxq';
     this.redirectUri = process.env.TIKTOK_REDIRECT_URI || 'https://youtube.com';
     this.scopes = [
-      'user.info.basic',
-      'video.publish', 
+      'user.b.basic',
+      'video.publish',
       'video.upload',
       'user.info.profile',
       'user.info.stats'

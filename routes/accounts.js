@@ -25,11 +25,11 @@ router.get('/', authMiddleware, async (req, res) => {
 router.get('/oauth/url', authMiddleware, async (req, res) => {
   try {
     const { authUrl, state } = tiktokService.generateAuthUrl();
-    
+
     // Сохраняем state в сессии или временно в БД для проверки
     req.session = req.session || {};
     req.session.tiktokOAuthState = state;
-    
+
     res.json({
       authUrl,
       state,
