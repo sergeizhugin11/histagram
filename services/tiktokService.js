@@ -1,10 +1,10 @@
-// services/tiktokService.js - Добавить проверку времени и автоматический обмен
+// services/tiktokService.js - Исправленная версия с TikTok OAuth v2
 const axios = require('axios');
-const crypto = require('crypto');
 
 class TikTokService {
   constructor() {
-    this.baseURL = 'https://open-api.tiktok.com';
+    // Используем правильный v2 endpoint
+    this.baseURL = 'https://open.tiktokapis.com/v2';
     this.clientKey = process.env.TIKTOK_CLIENT_KEY || 'sbawqqvtabe0moshpm';
     this.clientSecret = process.env.TIKTOK_CLIENT_SECRET || 'LVnJbfibR3kgfbLhyOSBQURAy09AIbxq';
     this.redirectUri = process.env.TIKTOK_REDIRECT_URI || 'https://login.salesforce.com';
@@ -16,22 +16,15 @@ class TikTokService {
       'user.info.stats'
     ];
     
-    // Кэш для кодов с временными метками
-    this.pendingCodes = new Map();
+    // Cache для использованных кодов
+    this.usedCodes = new Set();
   }
 
-  // Генерация OAuth URL с отслеживанием времени
+  // Generate OAuth URL
   generateAuthUrl(userId = null) {
     const state = this.generateRandomString(32);
-    const timestamp = Date.now();
     
-    // Сохраняем состояние с временной меткой
-    this.pendingCodes.set(state, {
-      userId,
-      timestamp,
-      expiresAt: timestamp + (10 * 60 * 1000) // 10 минут
-    });
-    
+    // Используем правильный v2 authorization endpoint
     const authUrl = `https://www.tiktok.com/v2/auth/authorize/` +
       `?client_key=${encodeURIComponent(this.clientKey)}` +
       `&scope=${encodeURIComponent(this.scopes.join(','))}` +
@@ -39,8 +32,13 @@ class TikTokService {
       `&redirect_uri=${encodeURIComponent(this.redirectUri)}` +
       `&state=${encodeURIComponent(state)}`;
 
-    console.log('🔗 OAuth URL generated at:', new Date(timestamp).toISOString());
-    console.log('⏰ Code will expire at:', new Date(timestamp + 10 * 60 * 1000).toISOString());
+    console.log('🔗 Generated OAuth URL (v2):', authUrl);
+    console.log('📋 Configuration:', {
+      clientKey: this.clientKey,
+      redirectUri: this.redirectUri,
+      scopes: this.scopes.join(','),
+      state: state.substring(0, 8) + '...'
+    });
 
     return {
       authUrl,
@@ -48,135 +46,113 @@ class TikTokService {
       clientKey: this.clientKey,
       redirectUri: this.redirectUri,
       scopes: this.scopes.join(','),
-      expiresIn: 600, // 10 минут в секундах
-      generatedAt: timestamp
+      version: 'v2',
+      warningMessage: '⚠️ Authorization code expires in 10 minutes and can only be used ONCE!',
+      generatedAt: new Date().toISOString()
     };
   }
 
-  // Проверка валидности кода по времени
-  isCodeValid(state) {
-    const stateData = this.pendingCodes.get(state);
-    if (!stateData) {
-      return { valid: false, reason: 'State not found' };
-    }
-
-    const now = Date.now();
-    const timeLeft = stateData.expiresAt - now;
-    
-    if (timeLeft <= 0) {
-      this.pendingCodes.delete(state);
-      return { 
-        valid: false, 
-        reason: 'Code expired',
-        expiredAt: new Date(stateData.expiresAt).toISOString()
-      };
-    }
-
-    return { 
-      valid: true, 
-      timeLeft: Math.floor(timeLeft / 1000), // секунды
-      expiresAt: new Date(stateData.expiresAt).toISOString()
-    };
-  }
-
-  // Улучшенный обмен кода на токены с проверкой времени
+  // Exchange code for tokens - исправленная версия
   async exchangeCodeForTokens(code, state = null) {
     try {
-      console.log('🔄 Starting token exchange process...');
+      console.log('🔄 Starting OAuth v2 token exchange...');
       console.log('⏰ Current time:', new Date().toISOString());
+      
+      // Декодируем код (может быть URL-encoded)
+      const decodedCode = decodeURIComponent(code.trim());
+      console.log('📝 Code processing:', {
+        original: code.substring(0, 10) + '...',
+        decoded: decodedCode.substring(0, 10) + '...',
+        length: decodedCode.length
+      });
 
-      // Проверяем валидность по времени
-      if (state) {
-        const validity = this.isCodeValid(state);
-        if (!validity.valid) {
-          throw new Error(`Code validation failed: ${validity.reason}. ${validity.expiredAt ? `Expired at: ${validity.expiredAt}` : ''}`);
-        }
-        console.log(`✅ Code is valid, expires in ${validity.timeLeft} seconds`);
+      // Проверяем, не использовался ли уже этот код
+      if (this.usedCodes.has(decodedCode)) {
+        throw new Error('Authorization code has already been used. Please get a new one.');
       }
+
+      // Помечаем код как используемый
+      this.usedCodes.add(decodedCode);
 
       const requestData = {
         client_key: this.clientKey,
         client_secret: this.clientSecret,
-        code: code.trim(),
+        code: decodedCode,
         grant_type: 'authorization_code',
         redirect_uri: this.redirectUri
       };
 
-      console.log('📡 Making token exchange request...');
-      console.log('Request data:', {
+      console.log('📡 Making v2 token exchange request...');
+      console.log('🎯 Endpoint:', `${this.baseURL}/oauth/token/`);
+      console.log('📋 Request data:', {
         ...requestData,
         client_secret: '[HIDDEN]',
-        code: code.substring(0, 10) + '...'
+        code: decodedCode.substring(0, 10) + '...'
       });
 
-      let response;
-      try {
-        // Пробуем JSON формат
-        response = await axios.post(`${this.baseURL}/oauth/access_token/`, requestData, {
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'TikTokContentManager/1.0'
-          },
-          timeout: 30000
-        });
-      } catch (jsonError) {
-        console.log('📡 JSON request failed, trying form-encoded...');
-        
-        // Fallback к form-encoded
-        const params = new URLSearchParams(requestData);
-        response = await axios.post(`${this.baseURL}/oauth/access_token/`, params, {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'TikTokContentManager/1.0'
-          },
-          timeout: 30000
-        });
-      }
+      // Используем правильный v2 endpoint
+      const response = await axios.post(`${this.baseURL}/oauth/token/`, requestData, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'TikTokContentManager/1.0'
+        },
+        timeout: 30000,
+        // Преобразуем в URL-encoded формат
+        transformRequest: [(data) => {
+          return Object.keys(data)
+            .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(data[key])}`)
+            .join('&');
+        }]
+      });
 
       console.log('📥 Token exchange response status:', response.status);
       console.log('📥 Response data:', JSON.stringify(response.data, null, 2));
 
-      // Проверяем ошибки в ответе
-      if (response.data.message === 'error' || response.data.error) {
-        const errorCode = response.data.data?.error_code || response.data.error_code;
-        const description = response.data.data?.description || response.data.error_description || 'Unknown error';
+      // Проверяем успешность ответа
+      if (response.data.error) {
+        // v2 API возвращает ошибки в другом формате
+        const errorCode = response.data.error;
+        const description = response.data.error_description || 'Unknown error';
         
         let userMessage = description;
         switch (errorCode) {
-          case 10007:
-            userMessage = '⏰ Authorization code has expired (10 minutes limit). Please start the OAuth process again and complete it quickly.';
+          case 'invalid_grant':
+            if (description.includes('expired')) {
+              userMessage = '⏰ Authorization code has expired! Please start the OAuth process again and complete it within 10 minutes.';
+            } else {
+              userMessage = '❌ Invalid authorization code. Please make sure you copied the entire code correctly.';
+            }
             break;
-          case 10003:
-            userMessage = '❌ Invalid authorization code. Please make sure you copied the entire code correctly.';
-            break;
-          case 10004:
+          case 'invalid_client':
             userMessage = '🔑 Invalid client credentials. Please check your TikTok app configuration.';
             break;
-          case 10008:
-            userMessage = '🔗 Invalid redirect URI. Please check your TikTok app settings.';
+          case 'invalid_request':
+            userMessage = '📝 Invalid request format. Please check the request parameters.';
             break;
         }
         
-        throw new Error(`TikTok OAuth Error (${errorCode}): ${userMessage}`);
+        throw new Error(`TikTok OAuth v2 Error (${errorCode}): ${userMessage}`);
       }
 
-      const tokenData = response.data.data;
+      // v2 API возвращает токены напрямую в data
+      const tokenData = response.data;
       if (!tokenData || !tokenData.access_token) {
-        throw new Error('No access token received from TikTok API');
+        throw new Error('No access token received from TikTok v2 API');
       }
 
-      // Очищаем состояние OAuth
-      if (state) {
-        this.pendingCodes.delete(state);
-      }
-
-      console.log('✅ Token exchange successful');
-      console.log('⏰ Completed at:', new Date().toISOString());
+      console.log('✅ v2 Token exchange successful');
+      console.log('🎉 Token type:', tokenData.token_type || 'bearer');
+      console.log('⏰ Expires in:', tokenData.expires_in, 'seconds');
       
       return tokenData;
 
     } catch (error) {
-      console.error('❌ Token exchange error:', error.message);
+      console.error('❌ v2 Token exchange error:', error.message);
+      
+      // Удаляем код из используемых, если произошла ошибка
+      if (code) {
+        this.usedCodes.delete(decodeURIComponent(code.trim()));
+      }
       
       if (error.response) {
         console.error('Response status:', error.response.status);
@@ -187,43 +163,105 @@ class TikTokService {
     }
   }
 
-  // Очистка истекших состояний (можно вызывать периодически)
-  cleanupExpiredStates() {
-    const now = Date.now();
-    let cleaned = 0;
-    
-    for (const [state, data] of this.pendingCodes.entries()) {
-      if (data.expiresAt <= now) {
-        this.pendingCodes.delete(state);
-        cleaned++;
+  // Get user info - обновленный для v2
+  async getUserInfo(accessToken, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        console.log(`🔍 Getting user info v2 (attempt ${i + 1}/${retries})...`);
+        
+        const response = await axios.post(`${this.baseURL}/user/info/`, {
+          access_token: accessToken,
+          fields: [
+            'open_id',
+            'union_id',
+            'avatar_url',
+            'display_name',
+            'bio_description',
+            'profile_deep_link',
+            'is_verified',
+            'follower_count',
+            'following_count',
+            'likes_count',
+            'video_count'
+          ]
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'TikTokContentManager/1.0'
+          },
+          timeout: 30000
+        });
+
+        console.log('📥 User info response:', JSON.stringify(response.data, null, 2));
+
+        if (response.data.error) {
+          throw new Error(`TikTok User Info Error: ${response.data.error.message || response.data.error}`);
+        }
+
+        return response.data.data;
+      } catch (error) {
+        console.error(`❌ User info attempt ${i + 1} failed:`, error.message);
+        
+        if (i === retries - 1) {
+          throw new Error(`Failed to get user info after ${retries} attempts: ${error.message}`);
+        }
+        
+        // Wait before retry
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
       }
     }
-    
-    if (cleaned > 0) {
-      console.log(`🧹 Cleaned up ${cleaned} expired OAuth states`);
-    }
-    
-    return cleaned;
   }
 
-  // Получить информацию о pending кодах
-  getPendingCodesInfo() {
-    const now = Date.now();
-    const codes = [];
-    
-    for (const [state, data] of this.pendingCodes.entries()) {
-      const timeLeft = data.expiresAt - now;
-      codes.push({
-        state: state.substring(0, 8) + '...',
-        timeLeft: Math.max(0, Math.floor(timeLeft / 1000)),
-        expired: timeLeft <= 0,
-        generatedAt: new Date(data.timestamp).toISOString()
+  // Get user profile - обновленный для v2
+  async getUserProfile(accessToken) {
+    try {
+      console.log('👤 Getting user profile v2...');
+      
+      const response = await axios.post(`${this.baseURL}/user/info/`, {
+        access_token: accessToken,
+        fields: [
+          'open_id', 'union_id', 'avatar_url', 'display_name', 
+          'bio_description', 'profile_deep_link', 'is_verified',
+          'follower_count', 'following_count', 'likes_count', 'video_count'
+        ]
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'TikTokContentManager/1.0'
+        },
+        timeout: 30000
       });
+
+      console.log('📥 Profile response:', JSON.stringify(response.data, null, 2));
+
+      if (response.data.error) {
+        throw new Error(`TikTok Profile Error: ${response.data.error.message || response.data.error}`);
+      }
+
+      return response.data.data || {};
+    } catch (error) {
+      console.error('❌ Profile fetch error:', error.message);
+      throw error;
     }
-    
-    return codes;
   }
 
+  // Validate token
+  async validateToken(accessToken) {
+    try {
+      const userInfo = await this.getUserInfo(accessToken);
+      return {
+        valid: true,
+        userInfo
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Generate random string
   generateRandomString(length) {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let result = '';
@@ -231,6 +269,25 @@ class TikTokService {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return result;
+  }
+
+  // Очистить кэш использованных кодов (периодически)
+  clearUsedCodes() {
+    const clearedCount = this.usedCodes.size;
+    this.usedCodes.clear();
+    console.log(`🧹 Cleared ${clearedCount} used codes from cache`);
+    return clearedCount;
+  }
+
+  // Получить статистику
+  getStats() {
+    return {
+      usedCodesCount: this.usedCodes.size,
+      version: 'v2',
+      baseURL: this.baseURL,
+      clientKey: this.clientKey,
+      redirectUri: this.redirectUri
+    };
   }
 }
 
