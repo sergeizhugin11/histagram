@@ -80,33 +80,64 @@ router.post('/oauth/exchange', authMiddleware, [
 
     const { code, accountName, description } = req.body;
 
-    console.log('Starting OAuth token exchange...');
+    console.log('🔄 Starting OAuth token exchange...');
+    console.log('Code length:', code.length);
+    console.log('Account name:', accountName);
 
     // Exchange code for tokens
-    const tokenData = await tiktokService.exchangeCodeForTokens(code);
+    let tokenData;
+    try {
+      tokenData = await tiktokService.exchangeCodeForTokens(code);
+    } catch (tokenError) {
+      console.error('❌ Token exchange failed:', tokenError.message);
+      return res.status(400).json({ 
+        error: 'Failed to exchange authorization code for tokens',
+        details: tokenError.message,
+        suggestion: 'Please try getting a new authorization code. The code may have expired or been used already.'
+      });
+    }
     
     if (!tokenData.access_token) {
-      return res.status(400).json({ error: 'Failed to obtain access token from TikTok' });
+      console.error('❌ No access token received');
+      return res.status(400).json({ 
+        error: 'Failed to obtain access token from TikTok',
+        details: 'The token exchange was successful but no access token was returned'
+      });
     }
 
-    console.log('Tokens obtained, getting user info...');
+    console.log('✅ Tokens obtained, getting user info...');
 
     // Get user information
-    const userInfo = await tiktokService.getUserInfo(tokenData.access_token);
+    let userInfo;
+    try {
+      userInfo = await tiktokService.getUserInfo(tokenData.access_token);
+    } catch (userInfoError) {
+      console.error('❌ Failed to get user info:', userInfoError.message);
+      return res.status(400).json({ 
+        error: 'Failed to get user information from TikTok',
+        details: userInfoError.message,
+        suggestion: 'The access token may be invalid or the account may not have the required permissions.'
+      });
+    }
     
     if (!userInfo || !userInfo.open_id) {
-      return res.status(400).json({ error: 'Failed to get user information from TikTok' });
+      console.error('❌ Invalid user info received:', userInfo);
+      return res.status(400).json({ 
+        error: 'Failed to get user information from TikTok',
+        details: 'Invalid user data received from TikTok API'
+      });
     }
 
     // Get additional profile information (optional)
     let profileInfo = null;
     try {
       profileInfo = await tiktokService.getUserProfile(tokenData.access_token);
+      console.log('✅ Profile info obtained');
     } catch (profileError) {
-      console.log('Profile info not available:', profileError.message);
+      console.log('⚠️ Profile info not available:', profileError.message);
     }
 
-    console.log('User info obtained:', {
+    console.log('👤 User info obtained:', {
       openId: userInfo.open_id,
       unionId: userInfo.union_id,
       displayName: profileInfo?.display_name
@@ -121,8 +152,10 @@ router.post('/oauth/exchange', authMiddleware, [
     });
 
     if (existingAccount) {
+      console.log('❌ Account already exists');
       return res.status(400).json({ 
-        error: 'This TikTok account is already connected to your profile' 
+        error: 'This TikTok account is already connected to your profile',
+        accountName: existingAccount.accountName
       });
     }
 
@@ -130,6 +163,8 @@ router.post('/oauth/exchange', authMiddleware, [
     const tokenExpiresAt = tokenData.expires_in 
       ? new Date(Date.now() + tokenData.expires_in * 1000)
       : null;
+
+    console.log('💾 Creating account record...');
 
     // Create TikTok account record
     const account = await TikTokAccount.create({
@@ -148,8 +183,11 @@ router.post('/oauth/exchange', authMiddleware, [
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token || null,
       tokenExpiresAt: tokenExpiresAt,
-      scope: tokenData.scope || tiktokService.scopes.join(',')
+      scope: tokenData.scope || tiktokService.scopes.join(','),
+      lastSyncAt: new Date()
     });
+
+    console.log('✅ Account created successfully:', account.id);
 
     // Return account without sensitive data
     const accountResponse = {
@@ -170,14 +208,21 @@ router.post('/oauth/exchange', authMiddleware, [
     };
 
     res.status(201).json({
-      message: 'TikTok account connected successfully',
-      account: accountResponse
+      message: 'TikTok account connected successfully! 🎉',
+      account: accountResponse,
+      debug: {
+        tokenType: tokenData.token_type || 'bearer',
+        expiresIn: tokenData.expires_in || 'unknown',
+        scope: tokenData.scope || 'unknown'
+      }
     });
 
   } catch (error) {
-    console.error('OAuth exchange error:', error);
+    console.error('❌ OAuth exchange error:', error);
     res.status(500).json({ 
-      error: error.message || 'Failed to connect TikTok account' 
+      error: 'Failed to connect TikTok account',
+      details: error.message,
+      suggestion: 'Please try again or contact support if the issue persists.'
     });
   }
 });
@@ -382,6 +427,127 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/oauth/debug', authMiddleware, [
+  body('code').notEmpty().trim()
+], async (req, res) => {
+  try {
+    const { code } = req.body;
+    
+    console.log('\n🐛 ===== DEBUG OAUTH EXCHANGE =====');
+    console.log('Received code:', code);
+    console.log('Code length:', code.length);
+    console.log('Environment variables:');
+    console.log('- TIKTOK_CLIENT_KEY:', process.env.TIKTOK_CLIENT_KEY);
+    console.log('- TIKTOK_CLIENT_SECRET exists:', !!process.env.TIKTOK_CLIENT_SECRET);
+    console.log('- TIKTOK_REDIRECT_URI:', process.env.TIKTOK_REDIRECT_URI);
+    
+    // Manual token exchange with maximum debugging
+    const axios = require('axios');
+    
+    const testData = {
+      client_key: process.env.TIKTOK_CLIENT_KEY,
+      client_secret: process.env.TIKTOK_CLIENT_SECRET,
+      code: code.trim(),
+      grant_type: 'authorization_code',
+      redirect_uri: process.env.TIKTOK_REDIRECT_URI
+    };
+
+    console.log('Test request data:', {
+      ...testData,
+      client_secret: '***HIDDEN***'
+    });
+
+    // Test different endpoints manually
+    const results = [];
+    
+    const endpoints = [
+      'https://open-api.tiktok.com/v2/oauth/token/',
+      'https://open-api.tiktok.com/oauth/access_token/',
+      'https://open.tiktokapis.com/v2/oauth/token/'
+    ];
+
+    for (const endpoint of endpoints) {
+      console.log(`\n🔄 Testing endpoint: ${endpoint}`);
+      
+      try {
+        // Test JSON format
+        const jsonResponse = await axios.post(endpoint, testData, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000,
+          validateStatus: () => true
+        });
+
+        const jsonResult = {
+          endpoint,
+          format: 'JSON',
+          status: jsonResponse.status,
+          data: jsonResponse.data,
+          success: !!(jsonResponse.data.access_token || jsonResponse.data.data?.access_token)
+        };
+
+        results.push(jsonResult);
+        console.log('JSON result:', jsonResult);
+
+        // Test form format
+        const formResponse = await axios.post(endpoint, new URLSearchParams(testData).toString(), {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          timeout: 30000,
+          validateStatus: () => true
+        });
+
+        const formResult = {
+          endpoint,
+          format: 'FORM',
+          status: formResponse.status,
+          data: formResponse.data,
+          success: !!(formResponse.data.access_token || formResponse.data.data?.access_token)
+        };
+
+        results.push(formResult);
+        console.log('FORM result:', formResult);
+
+      } catch (error) {
+        const errorResult = {
+          endpoint,
+          error: error.message,
+          responseData: error.response?.data || null,
+          responseStatus: error.response?.status || null
+        };
+        
+        results.push(errorResult);
+        console.log('Error result:', errorResult);
+      }
+    }
+
+    console.log('🐛 ===== DEBUG OAUTH EXCHANGE END =====\n');
+
+    res.json({
+      message: 'Debug token exchange completed',
+      code_received: code,
+      code_length: code.length,
+      environment: {
+        client_key: process.env.TIKTOK_CLIENT_KEY,
+        client_secret_exists: !!process.env.TIKTOK_CLIENT_SECRET,
+        redirect_uri: process.env.TIKTOK_REDIRECT_URI
+      },
+      test_results: results,
+      suggestions: [
+        'Check if the authorization code is still valid (codes typically expire quickly)',
+        'Verify that the redirect_uri matches exactly with your TikTok app settings',
+        'Ensure the client_key and client_secret are correct',
+        'Try getting a fresh authorization code'
+      ]
+    });
+
+  } catch (error) {
+    console.error('Debug endpoint error:', error);
+    res.status(500).json({ 
+      error: 'Debug failed',
+      details: error.message 
+    });
   }
 });
 
