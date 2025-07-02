@@ -1,4 +1,3 @@
-// models/tiktokAccount.js
 module.exports = (sequelize, DataTypes) => {
   const TikTokAccount = sequelize.define('TikTokAccount', {
     id: {
@@ -40,9 +39,9 @@ module.exports = (sequelize, DataTypes) => {
       comment: 'Отображаемое имя в TikTok'
     },
     avatarUrl: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT, // Изменено на TEXT для поддержки длинных URL
       allowNull: true,
-      comment: 'URL аватара пользователя'
+      comment: 'URL аватара пользователя (может быть очень длинным)'
     },
     isVerified: {
       type: DataTypes.BOOLEAN,
@@ -60,7 +59,7 @@ module.exports = (sequelize, DataTypes) => {
       comment: 'Количество подписок'
     },
     likesCount: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.BIGINT, // Изменено на BIGINT для больших чисел
       defaultValue: 0,
       comment: 'Общее количество лайков'
     },
@@ -85,7 +84,7 @@ module.exports = (sequelize, DataTypes) => {
       comment: 'Время истечения access token'
     },
     scope: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT, // Изменено на TEXT для длинных списков разрешений
       allowNull: true,
       comment: 'Разрешения (scopes) для токена'
     },
@@ -185,6 +184,19 @@ module.exports = (sequelize, DataTypes) => {
     delete data.accessToken;
     delete data.refreshToken;
     return data;
+  };
+
+  // Метод для обрезки длинных URL при необходимости
+  TikTokAccount.prototype.getSafeAvatarUrl = function() {
+    if (!this.avatarUrl) return null;
+    
+    // Если URL слишком длинный, возвращаем упрощенную версию
+    if (this.avatarUrl.length > 500) {
+      const url = new URL(this.avatarUrl);
+      return `${url.protocol}//${url.hostname}${url.pathname}`;
+    }
+    
+    return this.avatarUrl;
   };
 
   return TikTokAccount;

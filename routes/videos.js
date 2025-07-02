@@ -1,3 +1,5 @@
+// routes/videos.js - Улучшенный fileFilter для поддержки всех видео форматов
+
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -9,7 +11,7 @@ const videoService = require('../services/videoService');
 
 const router = express.Router();
 
-// Multer configuration
+// Multer configuration with improved video file detection
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
     const uploadPath = path.join(process.env.UPLOAD_PATH || './uploads', 'videos');
@@ -24,19 +26,113 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+  limits: { fileSize: 200 * 1024 * 1024 }, // Увеличили до 200MB
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /mp4|avi|mov|wmv|flv|webm/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    console.log('📁 File upload attempt:', {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size
+    });
 
-    if (mimetype && extname) {
+    // Поддерживаемые расширения видео файлов
+    const allowedExtensions = [
+      '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv', 
+      '.m4v', '.3gp', '.3g2', '.mts', '.m2ts', '.ts', '.vob',
+      '.ogv', '.dv', '.f4v', '.asf', '.rm', '.rmvb', '.divx'
+    ];
+
+    // Поддерживаемые MIME типы
+    const allowedMimeTypes = [
+      'video/mp4',
+      'video/avi',
+      'video/quicktime',        // .mov files
+      'video/x-msvideo',        // .avi files
+      'video/x-ms-wmv',         // .wmv files
+      'video/x-flv',            // .flv files
+      'video/webm',             // .webm files
+      'video/x-matroska',       // .mkv files
+      'video/3gpp',             // .3gp files
+      'video/3gpp2',            // .3g2 files
+      'video/mp2t',             // .ts files
+      'video/ogg',              // .ogv files
+      'video/x-f4v',            // .f4v files
+      'video/x-ms-asf',         // .asf files
+      'application/octet-stream' // Fallback для неопознанных типов
+    ];
+
+    const fileExtension = path.extname(file.originalname).toLowerCase();
+    const mimeType = file.mimetype.toLowerCase();
+
+    // Проверяем расширение файла
+    const hasValidExtension = allowedExtensions.includes(fileExtension);
+    
+    // Проверяем MIME тип
+    const hasValidMimeType = allowedMimeTypes.includes(mimeType);
+
+    // Специальная проверка для .mov файлов
+    const isMOVFile = fileExtension === '.mov' && (
+      mimeType === 'video/quicktime' || 
+      mimeType === 'video/mp4' ||
+      mimeType === 'application/octet-stream'
+    );
+
+    // Принимаем файл если:
+    // 1. И расширение, и MIME тип валидны
+    // 2. Или это .mov файл с любым из допустимых MIME типов
+    // 3. Или расширение валидно (даже если MIME тип не определен)
+    if (hasValidExtension && (hasValidMimeType || isMOVFile)) {
+      console.log('✅ File accepted:', {
+        extension: fileExtension,
+        mimetype: mimeType,
+        reason: hasValidMimeType ? 'valid mime type' : 'valid extension'
+      });
       return cb(null, true);
     } else {
-      cb(new Error('Only video files are allowed!'));
+      console.log('❌ File rejected:', {
+        extension: fileExtension,
+        mimetype: mimeType,
+        hasValidExtension,
+        hasValidMimeType,
+        isMOVFile
+      });
+      
+      const error = new Error(
+        `File type not supported. Received: ${fileExtension} (${mimeType}). ` +
+        `Supported formats: ${allowedExtensions.join(', ')}`
+      );
+      error.code = 'INVALID_FILE_TYPE';
+      cb(error);
     }
   }
 });
+
+// Middleware для обработки ошибок загрузки
+const handleUploadErrors = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ 
+        error: 'File too large',
+        details: 'Maximum file size is 200MB',
+        maxSize: '200MB'
+      });
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({ 
+        error: 'Unexpected file field',
+        details: 'Only single video file is allowed'
+      });
+    }
+  }
+  
+  if (err.code === 'INVALID_FILE_TYPE') {
+    return res.status(400).json({ 
+      error: 'Invalid file type',
+      details: err.message
+    });
+  }
+  
+  next(err);
+};
 
 // Get all videos
 router.get('/', authMiddleware, async (req, res) => {
@@ -71,8 +167,15 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// Upload video
-router.post('/upload', authMiddleware, upload.single('video'), [
+// Upload video с улучшенной обработкой ошибок
+router.post('/upload', authMiddleware, (req, res, next) => {
+  upload.single('video')(req, res, (err) => {
+    if (err) {
+      return handleUploadErrors(err, req, res, next);
+    }
+    next();
+  });
+}, [
   body('title').notEmpty().trim(),
   body('description').optional().trim(),
   body('hashtags').optional().trim(),
@@ -87,6 +190,13 @@ router.post('/upload', authMiddleware, upload.single('video'), [
     if (!req.file) {
       return res.status(400).json({ error: 'No video file uploaded' });
     }
+
+    console.log('📹 Processing uploaded video:', {
+      originalname: req.file.originalname,
+      filename: req.file.filename,
+      size: req.file.size,
+      mimetype: req.file.mimetype
+    });
 
     const { title, description, hashtags, categoryId, priority } = req.body;
 
@@ -110,12 +220,18 @@ router.post('/upload', authMiddleware, upload.single('video'), [
       include: [{ model: Category, attributes: ['id', 'name', 'color'] }]
     });
 
+    console.log('✅ Video uploaded successfully:', {
+      id: video.id,
+      title: video.title,
+      duration: metadata.duration
+    });
+
     res.status(201).json({
       message: 'Video uploaded successfully',
       video: videoWithCategory
     });
   } catch (error) {
-    console.error(error);
+    console.error('❌ Video upload error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -169,7 +285,8 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
     // Delete file from disk
     try {
-      await fs.unlink(video.filepath);
+      await require('fs').promises.unlink(video.filepath);
+      console.log('🗑️ Video file deleted:', video.filepath);
     } catch (fileError) {
       console.error('Error deleting file:', fileError);
     }
@@ -180,6 +297,40 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     console.error(error);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// Get supported video formats
+router.get('/formats', (req, res) => {
+  res.json({
+    supportedExtensions: [
+      '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv', 
+      '.m4v', '.3gp', '.3g2', '.mts', '.m2ts', '.ts', '.vob',
+      '.ogv', '.dv', '.f4v', '.asf', '.rm', '.rmvb', '.divx'
+    ],
+    supportedMimeTypes: [
+      'video/mp4',
+      'video/avi', 
+      'video/quicktime',
+      'video/x-msvideo',
+      'video/x-ms-wmv',
+      'video/x-flv',
+      'video/webm',
+      'video/x-matroska',
+      'video/3gpp',
+      'video/3gpp2',
+      'video/mp2t',
+      'video/ogg',
+      'video/x-f4v',
+      'video/x-ms-asf'
+    ],
+    maxFileSize: '200MB',
+    recommendations: [
+      'MP4 format is recommended for best compatibility',
+      'MOV files are fully supported',
+      'Maximum file size: 200MB',
+      'Ensure your video is properly encoded'
+    ]
+  });
 });
 
 module.exports = router;

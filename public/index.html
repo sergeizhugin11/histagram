@@ -503,53 +503,231 @@
     <!-- Modals will be inserted here -->
     <!-- Upload Video Modal -->
     <div class="modal fade" id="uploadModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="uploadForm" onsubmit="handleUpload(event)">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-upload me-2"></i>Upload Video</h5>
+                    <h5 class="modal-title">Upload Video</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <form id="uploadForm" enctype="multipart/form-data">
-                    <div class="modal-body">
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Video File</label>
-                                <input type="file" class="form-control" name="video" accept="video/*" required>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Video File</label>
+                            <input type="file" 
+                                   class="form-control" 
+                                   name="video" 
+                                   accept="video/*,.mov,.mp4,.avi,.wmv,.flv,.webm,.mkv,.m4v,.3gp,.3g2" 
+                                   required
+                                   onchange="handleFileSelect(this)">
+                            <div class="form-text">
+                                Supported formats: MP4, MOV, AVI, WMV, FLV, WebM, MKV and more. Max size: 200MB
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Category</label>
-                                <select class="form-select" name="categoryId" id="uploadCategorySelect">
-                                    <option value="">Select Category</option>
-                                </select>
+                            <div id="fileInfo" class="mt-2" style="display: none;">
+                                <div class="alert alert-info">
+                                    <strong>Selected file:</strong>
+                                    <div id="fileName"></div>
+                                    <div id="fileSize"></div>
+                                    <div id="fileType"></div>
+                                </div>
                             </div>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Title</label>
-                            <input type="text" class="form-control" name="title" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Description</label>
-                            <textarea class="form-control" name="description" rows="3"></textarea>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Hashtags</label>
-                            <input type="text" class="form-control" name="hashtags" placeholder="#hashtag1 #hashtag2">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Priority (0-10)</label>
-                            <input type="number" class="form-control" name="priority" value="0" min="0" max="10">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Category</label>
+                            <select class="form-select" name="categoryId" id="uploadCategorySelect">
+                                <option value="">Select Category</option>
+                            </select>
                         </div>
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-gradient">
-                            <i class="fas fa-upload me-2"></i>Upload
-                        </button>
+                    <div class="mb-3">
+                        <label class="form-label">Title</label>
+                        <input type="text" class="form-control" name="title" required>
                     </div>
-                </form>
-            </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" name="description" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Hashtags</label>
+                        <input type="text" class="form-control" name="hashtags" placeholder="#hashtag1 #hashtag2">
+                        <div class="form-text">
+                            Separate hashtags with spaces. Example: #viral #funny #trending
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Priority (0-10)</label>
+                        <input type="number" class="form-control" name="priority" value="0" min="0" max="10">
+                        <div class="form-text">
+                            Higher priority videos are published first
+                        </div>
+                    </div>
+                    
+                    <!-- Progress bar для загрузки -->
+                    <div id="uploadProgress" style="display: none;">
+                        <div class="mb-2">
+                            <strong>Uploading...</strong>
+                        </div>
+                        <div class="progress">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 role="progressbar" 
+                                 style="width: 0%"
+                                 id="uploadProgressBar">
+                            </div>
+                        </div>
+                        <div class="mt-2 text-muted" id="uploadStatus">
+                            Preparing upload...
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="cancelUploadBtn">Cancel</button>
+                    <button type="submit" class="btn btn-gradient" id="uploadSubmitBtn">
+                        <i class="fas fa-upload me-2"></i>Upload
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
+</div>
+
+<script>
+    // Обработка выбора файла
+    function handleFileSelect(input) {
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const fileType = document.getElementById('fileType');
+        
+        if (input.files && input.files[0]) {
+            const file = input.files[0];
+            
+            // Показываем информацию о файле
+            fileName.textContent = file.name;
+            fileSize.textContent = `Size: ${formatFileSize(file.size)}`;
+            fileType.textContent = `Type: ${file.type || 'Unknown'}`;
+            
+            fileInfo.style.display = 'block';
+            
+            // Проверяем размер файла
+            const maxSize = 200 * 1024 * 1024; // 200MB
+            if (file.size > maxSize) {
+                showNotification('File is too large. Maximum size is 200MB.', 'error');
+                input.value = '';
+                fileInfo.style.display = 'none';
+                return;
+            }
+            
+            // Проверяем тип файла
+            const allowedExtensions = ['.mp4', '.mov', '.avi', '.wmv', '.flv', '.webm', '.mkv', '.m4v', '.3gp', '.3g2'];
+            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+            
+            if (!allowedExtensions.includes(fileExtension)) {
+                showNotification(`File type ${fileExtension} is not supported. Please use: ${allowedExtensions.join(', ')}`, 'error');
+                input.value = '';
+                fileInfo.style.display = 'none';
+                return;
+            }
+            
+            console.log('✅ File selected:', {
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                extension: fileExtension
+            });
+        } else {
+            fileInfo.style.display = 'none';
+        }
+    }
+
+    // Форматирование размера файла
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Улучшенная обработка загрузки с прогресс-баром
+    async function handleUpload(e) {
+        e.preventDefault();
+        
+        const submitBtn = document.getElementById('uploadSubmitBtn');
+        const cancelBtn = document.getElementById('cancelUploadBtn');
+        const progressDiv = document.getElementById('uploadProgress');
+        const progressBar = document.getElementById('uploadProgressBar');
+        const statusDiv = document.getElementById('uploadStatus');
+        
+        const originalSubmitText = submitBtn.innerHTML;
+        
+        // Показываем прогресс
+        submitBtn.disabled = true;
+        cancelBtn.disabled = true;
+        progressDiv.style.display = 'block';
+        
+        const formData = new FormData(e.target);
+        
+        try {
+            // Создаем XMLHttpRequest для отслеживания прогресса
+            const xhr = new XMLHttpRequest();
+            
+            // Обработчик прогресса загрузки
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    progressBar.style.width = percentComplete + '%';
+                    progressBar.textContent = Math.round(percentComplete) + '%';
+                    
+                    if (percentComplete < 100) {
+                        statusDiv.textContent = `Uploading... ${Math.round(percentComplete)}%`;
+                    } else {
+                        statusDiv.textContent = 'Processing video...';
+                    }
+                }
+            });
+            
+            // Обработчик завершения
+            xhr.addEventListener('load', () => {
+                if (xhr.status === 201) {
+                    const data = JSON.parse(xhr.responseText);
+                    bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
+                    e.target.reset();
+                    document.getElementById('fileInfo').style.display = 'none';
+                    loadVideos();
+                    showNotification('Video uploaded successfully! 🎉', 'success');
+                } else {
+                    const errorData = JSON.parse(xhr.responseText);
+                    throw new Error(errorData.error || errorData.details || 'Upload failed');
+                }
+            });
+            
+            // Обработчик ошибок
+            xhr.addEventListener('error', () => {
+                throw new Error('Network error during upload');
+            });
+            
+            // Отправляем запрос
+            xhr.open('POST', '/api/videos/upload');
+            xhr.setRequestHeader('Authorization', 'Bearer ' + localStorage.getItem('token'));
+            xhr.send(formData);
+            
+        } catch (error) {
+            console.error('Upload error:', error);
+            showNotification('Upload failed: ' + error.message, 'error');
+        } finally {
+            // Восстанавливаем состояние формы
+            setTimeout(() => {
+                submitBtn.disabled = false;
+                cancelBtn.disabled = false;
+                submitBtn.innerHTML = originalSubmitText;
+                progressDiv.style.display = 'none';
+                progressBar.style.width = '0%';
+                progressBar.textContent = '';
+                statusDiv.textContent = 'Preparing upload...';
+            }, 1000);
+        }
+    }
+    </script>
 
     <!-- Other modals... -->
 

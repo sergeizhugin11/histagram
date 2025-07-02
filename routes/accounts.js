@@ -93,7 +93,7 @@ router.post('/oauth/exchange', authMiddleware, [
       return res.status(400).json({ 
         error: 'Failed to exchange authorization code for tokens',
         details: tokenError.message,
-        suggestion: 'Please try getting a new authorization code. The code may have expired or been used already.'
+        suggestion: 'Please try getting a new authorization code.'
       });
     }
     
@@ -107,16 +107,24 @@ router.post('/oauth/exchange', authMiddleware, [
 
     console.log('✅ Tokens obtained, getting user info...');
 
-    // Get user information
+    // Get user information с правильной обработкой v2 API
     let userInfo;
     try {
       userInfo = await tiktokService.getUserInfo(tokenData.access_token);
+      console.log('✅ User info obtained:', {
+        open_id: userInfo.open_id,
+        display_name: userInfo.display_name
+      });
     } catch (userInfoError) {
       console.error('❌ Failed to get user info:', userInfoError.message);
       return res.status(400).json({ 
         error: 'Failed to get user information from TikTok',
         details: userInfoError.message,
-        suggestion: 'The access token may be invalid or the account may not have the required permissions.'
+        suggestion: 'The access token may be invalid or the account may not have the required permissions. Try the debug endpoint to test the token.',
+        debug_endpoints: {
+          test_token: 'POST /api/accounts/oauth/test-userinfo',
+          debug_info: 'POST /api/accounts/oauth/debug-userinfo'
+        }
       });
     }
     
@@ -124,23 +132,24 @@ router.post('/oauth/exchange', authMiddleware, [
       console.error('❌ Invalid user info received:', userInfo);
       return res.status(400).json({ 
         error: 'Failed to get user information from TikTok',
-        details: 'Invalid user data received from TikTok API'
+        details: 'Invalid user data received from TikTok v2 API - missing open_id'
       });
     }
 
-    // Get additional profile information (optional)
+    // Get additional profile information (опционально, может не работать для всех токенов)
     let profileInfo = null;
     try {
       profileInfo = await tiktokService.getUserProfile(tokenData.access_token);
       console.log('✅ Profile info obtained');
     } catch (profileError) {
       console.log('⚠️ Profile info not available:', profileError.message);
+      // Не останавливаем процесс, если профиль не доступен
     }
 
     console.log('👤 User info obtained:', {
       openId: userInfo.open_id,
       unionId: userInfo.union_id,
-      displayName: profileInfo?.display_name
+      displayName: userInfo.display_name || profileInfo?.display_name || accountName
     });
 
     // Check if account already exists
@@ -173,9 +182,10 @@ router.post('/oauth/exchange', authMiddleware, [
       description: description || '',
       tiktokUserId: userInfo.open_id,
       tiktokUnionId: userInfo.union_id || null,
-      displayName: profileInfo?.display_name || accountName,
-      avatarUrl: profileInfo?.avatar_url || null,
-      isVerified: profileInfo?.is_verified || false,
+      displayName: userInfo.display_name || profileInfo?.display_name || accountName,
+      avatarUrl: userInfo.avatar_url || profileInfo?.avatar_url || null,
+      isVerified: userInfo.is_verified || profileInfo?.is_verified || false,
+      // Эти поля могут не быть доступны для всех приложений
       followerCount: profileInfo?.follower_count || 0,
       followingCount: profileInfo?.following_count || 0,
       likesCount: profileInfo?.likes_count || 0,
@@ -213,7 +223,10 @@ router.post('/oauth/exchange', authMiddleware, [
       debug: {
         tokenType: tokenData.token_type || 'bearer',
         expiresIn: tokenData.expires_in || 'unknown',
-        scope: tokenData.scope || 'unknown'
+        scope: tokenData.scope || 'unknown',
+        apiVersion: 'v2',
+        userInfoSuccess: true,
+        profileInfoSuccess: !!profileInfo
       }
     });
 

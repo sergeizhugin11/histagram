@@ -169,38 +169,51 @@ class TikTokService {
       try {
         console.log(`🔍 Getting user info v2 (attempt ${i + 1}/${retries})...`);
         
-        const response = await axios.post(`${this.baseURL}/user/info/`, {
-          access_token: accessToken,
-          fields: [
-            'open_id',
-            'union_id',
-            'avatar_url',
-            'display_name',
-            'bio_description',
-            'profile_deep_link',
-            'is_verified',
-            'follower_count',
-            'following_count',
-            'likes_count',
-            'video_count'
-          ]
-        }, {
+        // v2 API использует GET запрос с query параметрами
+        const fields = [
+          'open_id',
+          'union_id',
+          'avatar_url',
+          'display_name',
+          'bio_description',
+          'profile_deep_link',
+          'is_verified'
+        ];
+
+        const response = await axios.get(`${this.baseURL}/user/info/`, {
           headers: {
-            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
             'User-Agent': 'TikTokContentManager/1.0'
+          },
+          params: {
+            fields: fields.join(',')
           },
           timeout: 30000
         });
 
+        console.log('📥 User info response status:', response.status);
         console.log('📥 User info response:', JSON.stringify(response.data, null, 2));
 
-        if (response.data.error) {
-          throw new Error(`TikTok User Info Error: ${response.data.error.message || response.data.error}`);
+        // v2 API возвращает данные в формате { data: { user: {...} }, error: {...} }
+        if (response.data.error && response.data.error.code !== 'ok') {
+          throw new Error(`TikTok User Info Error: ${response.data.error.message || response.data.error.code}`);
         }
 
-        return response.data.data;
+        const userData = response.data.data?.user;
+        if (!userData) {
+          throw new Error('No user data received from TikTok v2 API');
+        }
+
+        console.log('✅ User info obtained successfully');
+        return userData;
+
       } catch (error) {
         console.error(`❌ User info attempt ${i + 1} failed:`, error.message);
+        
+        if (error.response) {
+          console.error('Response status:', error.response.status);
+          console.error('Response data:', error.response.data);
+        }
         
         if (i === retries - 1) {
           throw new Error(`Failed to get user info after ${retries} attempts: ${error.message}`);
@@ -212,35 +225,166 @@ class TikTokService {
     }
   }
 
-  // Get user profile - обновленный для v2
+  // Get user profile - упрощенный метод (использует тот же endpoint)
   async getUserProfile(accessToken) {
     try {
       console.log('👤 Getting user profile v2...');
       
-      const response = await axios.post(`${this.baseURL}/user/info/`, {
-        access_token: accessToken,
-        fields: [
-          'open_id', 'union_id', 'avatar_url', 'display_name', 
-          'bio_description', 'profile_deep_link', 'is_verified',
-          'follower_count', 'following_count', 'likes_count', 'video_count'
-        ]
-      }, {
+      // Запрашиваем дополнительные поля для профиля
+      const fields = [
+        'open_id', 
+        'union_id', 
+        'avatar_url', 
+        'display_name', 
+        'bio_description', 
+        'profile_deep_link', 
+        'is_verified',
+        'follower_count',
+        'following_count',
+        'likes_count',
+        'video_count'
+      ];
+
+      const response = await axios.get(`${this.baseURL}/user/info/`, {
         headers: {
-          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
           'User-Agent': 'TikTokContentManager/1.0'
+        },
+        params: {
+          fields: fields.join(',')
         },
         timeout: 30000
       });
 
+      console.log('📥 Profile response status:', response.status);
       console.log('📥 Profile response:', JSON.stringify(response.data, null, 2));
 
-      if (response.data.error) {
-        throw new Error(`TikTok Profile Error: ${response.data.error.message || response.data.error}`);
+      // Проверяем ошибки
+      if (response.data.error && response.data.error.code !== 'ok') {
+        throw new Error(`TikTok Profile Error: ${response.data.error.message || response.data.error.code}`);
       }
 
-      return response.data.data || {};
+      const userData = response.data.data?.user;
+      if (!userData) {
+        throw new Error('No profile data received from TikTok v2 API');
+      }
+
+      console.log('✅ Profile info obtained successfully');
+      return userData;
+
     } catch (error) {
       console.error('❌ Profile fetch error:', error.message);
+      
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', error.response.data);
+      }
+      
+      throw error;
+    }
+  }
+
+  // Validate token - обновленный для v2
+  async validateToken(accessToken) {
+    try {
+      console.log('🔍 Validating access token...');
+      
+      const userInfo = await this.getUserInfo(accessToken);
+      
+      console.log('✅ Token validation successful');
+      return {
+        valid: true,
+        userInfo
+      };
+    } catch (error) {
+      console.error('❌ Token validation failed:', error.message);
+      return {
+        valid: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Debug метод для тестирования user info endpoint
+  async debugUserInfo(accessToken) {
+    try {
+      console.log('🐛 Debug: Testing different user info configurations...');
+      
+      const testConfigs = [
+        {
+          name: 'Basic fields',
+          fields: ['open_id', 'union_id', 'avatar_url', 'display_name']
+        },
+        {
+          name: 'Extended fields',
+          fields: ['open_id', 'union_id', 'avatar_url', 'display_name', 'bio_description', 'profile_deep_link', 'is_verified']
+        },
+        {
+          name: 'All fields',
+          fields: ['open_id', 'union_id', 'avatar_url', 'display_name', 'bio_description', 'profile_deep_link', 'is_verified', 'follower_count', 'following_count', 'likes_count', 'video_count']
+        }
+      ];
+
+      const results = [];
+
+      for (const config of testConfigs) {
+        console.log(`\n🔄 Testing ${config.name}...`);
+        
+        try {
+          const response = await axios.get(`${this.baseURL}/user/info/`, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'User-Agent': 'TikTokContentManager/1.0'
+            },
+            params: {
+              fields: config.fields.join(',')
+            },
+            timeout: 30000,
+            validateStatus: () => true
+          });
+
+          const result = {
+            config: config.name,
+            fields: config.fields,
+            status: response.status,
+            success: response.status === 200 && response.data.data?.user,
+            data: response.data,
+            error: response.data.error
+          };
+
+          results.push(result);
+          console.log(`✅ ${config.name} result:`, {
+            status: result.status,
+            success: result.success,
+            hasUser: !!response.data.data?.user
+          });
+
+        } catch (error) {
+          const errorResult = {
+            config: config.name,
+            fields: config.fields,
+            error: error.message,
+            responseStatus: error.response?.status,
+            responseData: error.response?.data
+          };
+
+          results.push(errorResult);
+          console.log(`❌ ${config.name} error:`, errorResult);
+        }
+      }
+
+      return {
+        message: 'User info debug completed',
+        results,
+        summary: {
+          total_tests: results.length,
+          successful: results.filter(r => r.success).length,
+          failed: results.filter(r => !r.success).length
+        }
+      };
+
+    } catch (error) {
+      console.error('Debug user info error:', error);
       throw error;
     }
   }
